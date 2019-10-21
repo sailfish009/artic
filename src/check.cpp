@@ -135,7 +135,10 @@ const Type* TypeChecker::infer(const ast::Expr& expr, bool mut) {
 const Type* TypeChecker::infer(const ast::CallExpr& call, bool mut) {
     auto callee_type = deref(infer(*call.callee, mut));
     if (auto pi = callee_type->isa<thorin::Pi>()) {
-        check(*call.arg, pi->domain(1));
+        auto domain = pi->domain(1);
+        if (auto nom_sigma = domain->isa_nominal<thorin::Sigma>(); nom_sigma && nom_sigma->lit_arity() == 1)
+            domain = nom_sigma->op(0);
+        check(*call.arg, domain);
         return is_no_ret_type(pi->codomain()) ? pi->codomain() : pi->codomain(1);
     } else if (auto arr = callee_type->isa<thorin::Arr>()) {
         auto index_type = infer(*call.arg);
@@ -723,7 +726,12 @@ const artic::Type* EnumDecl::infer(TypeChecker& checker) const {
     // Set the type before entering the options
     type = enum_type;
     for (size_t i = 0, n = options.size(); i < n; ++i) {
-        auto option_type = options[i]->param ? checker.infer(*options[i]->param) : checker.world().sigma();
+        auto option_type_structural = options[i]->param ? checker.infer(*options[i]->param) : checker.world().sigma();
+        // make nominal
+        auto a = option_type_structural->lit_arity();
+        auto option_type = checker.world().sigma(checker.world().kind_star(), a, checker.world().tuple_str(options[i]->id.name));
+        for (size_t i = 0; i < a; ++i)
+            option_type->set(i, thorin::proj(option_type_structural, a, i));
         union_->set(i, checker.check(*options[i], option_type));
     }
     return enum_type;
@@ -736,7 +744,7 @@ const artic::Type* EnumDecl::value(TypeChecker& checker) const {
     if (type_params) {
         value_type = checker.world().pi(checker.world().kind_star());
         value_type->as_nominal<thorin::Pi>()->set_domain(type->as<thorin::Lam>()->domain());
-        type_app = checker.world().app(type, value_type->as_nominal()->param()); 
+        type_app = checker.world().app(type, value_type->as_nominal()->param());
         union_ = type_app->reduce();
     }
     auto sigma = checker.world().sigma(options.size(), union_->debug());

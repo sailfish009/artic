@@ -595,14 +595,13 @@ const thorin::Def* EnumDecl::emit_head(Emitter& emitter) const {
 
     thorin::Array<const thorin::Def*> defs(options.size(), [&] (size_t i) -> const thorin::Def* {
         auto dbg = emitter.world().debug_info(*options[i]);
-        auto index = emitter.world().lit_index(options.size(), i);
         if (options[i]->param) {
             auto option = emitter.world().lam(emitter.world().pi_mem(union_->op(i), type), dbg);
-            auto body = emitter.world().insert(emitter.world().bot(type_app), index, option->param(1), dbg);
+            auto body = emitter.world().variant(type_app, option->param(1), dbg);
             option->set(emitter.world().lit_true(), emitter.world().tuple({ option->param(0), body }));
             return options[i]->def = option;
         }
-        return options[i]->def = emitter.world().insert(emitter.world().bot(type_app), index, emitter.world().tuple(), dbg);
+        return options[i]->def = emitter.world().insert(type_app, emitter.world().tuple(), dbg);
     });
 
     if (lam) {
@@ -674,15 +673,15 @@ const thorin::Def* StructPtrn::emit(Emitter& emitter, const thorin::Def* value) 
 const thorin::Def* EnumPtrn::emit(Emitter& emitter, const thorin::Def* value) const {
     auto dbg = emitter.world().debug_info(*this);
     auto lit_index = emitter.world().lit_index(type->reduce()->lit_arity(), index);
-    auto arg_value = arg_ ? emitter.emit(*arg_, emitter.world().extract(value, lit_index, dbg)) : emitter.world().tuple();
-    return emitter.world().insert(emitter.world().bot(type), lit_index, arg_value, dbg);
+    auto arg_value = arg_ ? emitter.emit(*arg_, emitter.world().choose(type, value, dbg)) : emitter.world().tuple();
+    return emitter.world().variant(type, arg_value, dbg);
 }
 
 const thorin::Def* TuplePtrn::emit(Emitter& emitter, const thorin::Def* value) const {
     thorin::Array<const thorin::Def*> defs(args.size(), [&] (size_t i) {
         return emitter.emit(*args[i], emitter.world().extract(value, i, emitter.world().debug_info(*args[i])));
     });
-    return emitter.world().tuple(defs, emitter.world().debug_info(*this));
+    return emitter.world().tuple(type, defs, emitter.world().debug_info(*this));
 }
 
 } // namespace ast

@@ -1137,25 +1137,6 @@ struct StructPtrn : public Ptrn {
     void print(Printer&) const override;
 };
 
-/// A pattern that matches against enumerations.
-struct EnumPtrn : public Ptrn {
-    Path path;
-    Ptr<Ptrn> arg_;
-
-    mutable size_t index;
-
-    EnumPtrn(const Loc& loc, Path&& path, Ptr<Ptrn>&& arg_)
-        : Ptrn(loc), path(std::move(path)), arg_(std::move(arg_))
-    {}
-
-    bool is_trivial() const override;
-
-    const thorin::Def* emit(Emitter&, const thorin::Def*) const override;
-    const artic::Type* infer(TypeChecker&) const override;
-    void bind(NameBinder&) const override;
-    void print(Printer&) const override;
-};
-
 /// A pattern that matches against tuples.
 struct TuplePtrn : public Ptrn {
     PtrVector<Ptrn> args;
@@ -1169,6 +1150,25 @@ struct TuplePtrn : public Ptrn {
     const thorin::Def* emit(Emitter&, const thorin::Def*) const override;
     const artic::Type* infer(TypeChecker&) const override;
     const artic::Type* check(TypeChecker&, const artic::Type*) const override;
+    void bind(NameBinder&) const override;
+    void print(Printer&) const override;
+};
+
+/// A pattern that matches against enumerations.
+struct EnumPtrn : public Ptrn {
+    Path path;
+    Ptr<TuplePtrn> arg_;
+
+    mutable size_t index;
+
+    EnumPtrn(const Loc& loc, Path&& path, Ptr<TuplePtrn>&& arg_)
+        : Ptrn(loc), path(std::move(path)), arg_(std::move(arg_))
+    {}
+
+    bool is_trivial() const override;
+
+    const thorin::Def* emit(Emitter&, const thorin::Def*) const override;
+    const artic::Type* infer(TypeChecker&) const override;
     void bind(NameBinder&) const override;
     void print(Printer&) const override;
 };

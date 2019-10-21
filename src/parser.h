@@ -38,7 +38,8 @@ private:
     Ptr<ast::FieldPtrn>     parse_field_ptrn();
     Ptr<ast::StructPtrn>    parse_struct_ptrn(ast::Path&&);
     Ptr<ast::EnumPtrn>      parse_enum_ptrn(ast::Path&&);
-    Ptr<ast::Ptrn>          parse_tuple_ptrn(Token::Tag beg = Token::LParen, Token::Tag end = Token::RParen);
+    template<bool scalarize = true>
+    Ptr<std::conditional_t<scalarize, ast::Ptrn, ast::TuplePtrn>> parse_tuple_ptrn(Token::Tag beg = Token::LParen, Token::Tag end = Token::RParen);
     Ptr<ast::ErrorPtrn>     parse_error_ptrn();
 
     Ptr<ast::Stmt>          parse_stmt();
