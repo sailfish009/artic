@@ -200,8 +200,7 @@ const Type* TypeChecker::check(const Loc& loc, const Literal& lit, const Type* e
 
 template <typename Args>
 const Type* TypeChecker::check_tuple(const Loc& loc, const std::string& msg, const Args& args, const Type* expected) {
-    if (args.size() == 1)
-        return check(*args[0], expected);
+    assert(args.size() != 1);
     if (!is_tuple_type(expected))
         return expect(loc, msg, expected);
     if (args.size() != expected->lit_arity()) {
@@ -726,11 +725,8 @@ const artic::Type* EnumDecl::infer(TypeChecker& checker) const {
         // Set the type before entering the options
         type = enum_type;
         for (size_t i = 0, n = options.size(); i < n; ++i) {
-            auto option_arg  = options[i]->param ? checker.infer(*options[i]->param) : checker.world().sigma();
-            auto num_args    = option_arg->lit_arity();
-            auto option_type = checker.world().sigma(checker.world().kind_star(), num_args, checker.world().tuple_str(options[i]->id.name));
-            for (size_t i = 0; i < num_args; ++i)
-                option_type->set(i, thorin::proj(option_arg, num_args, i));
+            auto option_type = checker.world().sigma(checker.world().kind_star(), 1, checker.world().debug_info(*options[i]));
+            option_type->set(0, options[i]->param ? checker.infer(*options[i]->param) : checker.world().sigma());
             union_->set(i, checker.check(*options[i], option_type));
         }
     }
@@ -746,10 +742,8 @@ const artic::Type* EnumDecl::infer(TypeChecker& checker) const {
             union_ = type_app->reduce();
         }
         auto sigma = checker.world().sigma(options.size(), union_->debug());
-        for (size_t i = 0, n = options.size(); i < n; ++i) {
-            auto option_arg = union_->op(i)->as<thorin::Sigma>();
-            sigma->set(i, options[i]->param ? checker.world().pi_mem(checker.world().sigma(option_arg->ops()), type_app) : type_app);
-        }
+        for (size_t i = 0, n = options.size(); i < n; ++i)
+            sigma->set(i, options[i]->param ? checker.world().pi_mem(union_->op(i)->op(0), type_app) : type_app);
         if (value_type)
             value_type->as_nominal<thorin::Pi>()->set_codomain(sigma);
         else
@@ -809,18 +803,16 @@ const artic::Type* StructPtrn::infer(TypeChecker& checker) const {
 
 const artic::Type* EnumPtrn::infer(TypeChecker& checker) const {
     auto path_type = checker.infer(path);
-    auto enum_type = path_type;
+    auto target_type = path_type;
     const artic::Type* param_type = nullptr;
     if (auto pi = path_type->isa<thorin::Pi>()) {
         // Some enumeration options are functions
-        param_type = pi->domain(1);
-        enum_type  = pi->codomain(1);
+        param_type  = pi->domain(1);
+        target_type = pi->codomain(1);
     }
-    auto app = enum_type->isa<thorin::App>();
-    auto prev = enum_type;
-    if (app) enum_type = app->callee();
-    if (!is_enum_type(enum_type))
-        return checker.error_type_expected(path.loc, prev, "enumeration");
+    auto [app, enum_type] = match_app(target_type, is_enum_type);
+    if (!enum_type)
+        return checker.error_type_expected(path.loc, target_type, "enumeration");
     if (arg_) {
         if (!param_type) {
             checker.error(loc, "arguments expected after enumeration option");

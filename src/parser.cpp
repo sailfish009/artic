@@ -263,26 +263,23 @@ Ptr<ast::StructPtrn> Parser::parse_struct_ptrn(ast::Path&& path) {
 Ptr<ast::EnumPtrn> Parser::parse_enum_ptrn(ast::Path&& path) {
     Tracker tracker(this, path.loc);
 
-    Ptr<ast::TuplePtrn> arg;
+    Ptr<ast::Ptrn> arg;
     if (ahead().tag() == Token::LParen)
-        arg = std::move(parse_tuple_ptrn<false>());
+        arg = std::move(parse_tuple_ptrn());
 
     return make_ptr<ast::EnumPtrn>(tracker(), std::move(path), std::move(arg));
 }
 
-template<bool scalarize>
-Ptr<std::conditional_t<scalarize, ast::Ptrn, ast::TuplePtrn>> Parser::parse_tuple_ptrn(Token::Tag beg, Token::Tag end) {
+Ptr<ast::Ptrn> Parser::parse_tuple_ptrn(Token::Tag beg, Token::Tag end) {
     Tracker tracker(this);
     eat(beg);
     PtrVector<ast::Ptrn> args;
     parse_list(end, Token::Comma, [&] {
         args.emplace_back(parse_ptrn());
     });
-    if constexpr (scalarize) {
-        if (args.size() == 1) {
-            args[0]->loc = tracker();
-            return std::move(args[0]);
-        }
+    if (args.size() == 1) {
+        args[0]->loc = tracker();
+        return std::move(args[0]);
     }
     return make_ptr<ast::TuplePtrn>(tracker(), std::move(args));
 }
