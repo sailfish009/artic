@@ -103,15 +103,17 @@ const Type* TypeChecker::deref(const Type* type) {
 }
 
 const Type* TypeChecker::lookup(const Loc& loc, const ast::NamedDecl& decl, bool value) {
-    auto type = infer(decl);
     if (value) {
+        if (!decl.value_type)
+            infer(decl);
         if (!decl.value_type) {
             decl.value_type = error_cannot_infer(loc, "identifier");
             note(decl.loc, "defined here");
+            return world().type_error();
         }
         return decl.value_type;
     }
-    return type;
+    return infer(decl);
 }
 
 const Type* TypeChecker::check(const ast::Node& node, const Type* type) {
@@ -133,10 +135,7 @@ const Type* TypeChecker::infer(const ast::Expr& expr, bool mut) {
 const Type* TypeChecker::infer(const ast::CallExpr& call, bool mut) {
     auto callee_type = deref(infer(*call.callee, mut));
     if (auto pi = callee_type->isa<thorin::Pi>()) {
-        auto domain = pi->domain(1);
-        if (auto nom_sigma = domain->isa_nominal<thorin::Sigma>(); nom_sigma && nom_sigma->lit_arity() == 1)
-            domain = nom_sigma->op(0);
-        check(*call.arg, domain);
+        check(*call.arg, pi->domain(1));
         return is_no_ret_type(pi->codomain()) ? pi->codomain() : pi->codomain(1);
     } else if (auto arr = callee_type->isa<thorin::Arr>()) {
         auto index_type = infer(*call.arg);
@@ -201,6 +200,8 @@ const Type* TypeChecker::check(const Loc& loc, const Literal& lit, const Type* e
 
 template <typename Args>
 const Type* TypeChecker::check_tuple(const Loc& loc, const std::string& msg, const Args& args, const Type* expected) {
+    if (args.size() == 1)
+        return check(*args[0], expected);
     if (!is_tuple_type(expected))
         return expect(loc, msg, expected);
     if (args.size() != expected->lit_arity()) {
@@ -745,8 +746,10 @@ const artic::Type* EnumDecl::infer(TypeChecker& checker) const {
             union_ = type_app->reduce();
         }
         auto sigma = checker.world().sigma(options.size(), union_->debug());
-        for (size_t i = 0, n = options.size(); i < n; ++i)
-            sigma->set(i, options[i]->param ? checker.world().pi_mem(union_->op(i), type_app) : type_app);
+        for (size_t i = 0, n = options.size(); i < n; ++i) {
+            auto option_arg = union_->op(i)->as<thorin::Sigma>();
+            sigma->set(i, options[i]->param ? checker.world().pi_mem(checker.world().sigma(option_arg->ops()), type_app) : type_app);
+        }
         if (value_type)
             value_type->as_nominal<thorin::Pi>()->set_codomain(sigma);
         else
