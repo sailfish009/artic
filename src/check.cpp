@@ -5,7 +5,7 @@
 namespace artic {
 
 bool TypeChecker::run(const ast::ModDecl& module) {
-    module.infer(*this);
+    infer(module);
     return error_count == 0;
 }
 
@@ -103,17 +103,15 @@ const Type* TypeChecker::deref(const Type* type) {
 }
 
 const Type* TypeChecker::lookup(const Loc& loc, const ast::NamedDecl& decl, bool value) {
+    auto type = infer(decl);
     if (value) {
         if (!decl.value_type) {
-            decl.value_type = decl.value(*this);
-            if (!decl.value_type) {
-                decl.value_type = error_cannot_infer(loc, "identifier");
-                note(decl.loc, "defined here");
-            }
+            decl.value_type = error_cannot_infer(loc, "identifier");
+            note(decl.loc, "defined here");
         }
         return decl.value_type;
     }
-    return infer(decl);
+    return type;
 }
 
 const Type* TypeChecker::check(const ast::Node& node, const Type* type) {
@@ -717,60 +715,56 @@ const artic::Type* OptionDecl::check(TypeChecker&, const artic::Type* expected) 
 }
 
 const artic::Type* EnumDecl::infer(TypeChecker& checker) const {
-    auto enum_type = checker.world().type_enum(*this);
-    auto union_ = enum_type;
-    if (type_params) {
-        checker.check(*type_params, enum_type);
-        union_ = enum_type->as<thorin::Lam>()->body()->as_nominal();
+    {
+        auto enum_type = checker.world().type_enum(*this);
+        auto union_ = enum_type;
+        if (type_params) {
+            checker.check(*type_params, enum_type);
+            union_ = enum_type->as<thorin::Lam>()->body()->as_nominal();
+        }
+        // Set the type before entering the options
+        type = enum_type;
+        for (size_t i = 0, n = options.size(); i < n; ++i) {
+            auto option_arg  = options[i]->param ? checker.infer(*options[i]->param) : checker.world().sigma();
+            auto num_args    = option_arg->lit_arity();
+            auto option_type = checker.world().sigma(checker.world().kind_star(), num_args, checker.world().tuple_str(options[i]->id.name));
+            for (size_t i = 0; i < num_args; ++i)
+                option_type->set(i, thorin::proj(option_arg, num_args, i));
+            union_->set(i, checker.check(*options[i], option_type));
+        }
     }
-    // Set the type before entering the options
-    type = enum_type;
-    for (size_t i = 0, n = options.size(); i < n; ++i) {
-        auto option_type_structural = options[i]->param ? checker.infer(*options[i]->param) : checker.world().sigma();
-        // make nominal
-        auto a = option_type_structural->lit_arity();
-        auto option_type = checker.world().sigma(checker.world().kind_star(), a, checker.world().tuple_str(options[i]->id.name));
-        for (size_t i = 0; i < a; ++i)
-            option_type->set(i, thorin::proj(option_type_structural, a, i));
-        union_->set(i, checker.check(*options[i], option_type));
-    }
-    return enum_type;
-}
 
-const artic::Type* EnumDecl::value(TypeChecker& checker) const {
-    // Build the _value_ type: A sigma made of all the constructors
-    auto type_app = checker.infer(*this);
-    auto union_ = type_app;
-    if (type_params) {
-        value_type = checker.world().pi(checker.world().kind_star());
-        value_type->as_nominal<thorin::Pi>()->set_domain(type->as<thorin::Lam>()->domain());
-        type_app = checker.world().app(type, value_type->as_nominal()->param());
-        union_ = type_app->reduce();
+    {
+        // Build the _value_ type: A sigma made of all the constructors
+        auto type_app = checker.infer(*this);
+        auto union_ = type_app;
+        if (type_params) {
+            value_type = checker.world().pi(checker.world().kind_star());
+            value_type->as_nominal<thorin::Pi>()->set_domain(type->as<thorin::Lam>()->domain());
+            type_app = checker.world().app(type, value_type->as_nominal()->param());
+            union_ = type_app->reduce();
+        }
+        auto sigma = checker.world().sigma(options.size(), union_->debug());
+        for (size_t i = 0, n = options.size(); i < n; ++i)
+            sigma->set(i, options[i]->param ? checker.world().pi_mem(union_->op(i), type_app) : type_app);
+        if (value_type)
+            value_type->as_nominal<thorin::Pi>()->set_codomain(sigma);
+        else
+            value_type = sigma;
     }
-    auto sigma = checker.world().sigma(options.size(), union_->debug());
-    for (size_t i = 0, n = options.size(); i < n; ++i)
-        sigma->set(i, options[i]->param ? checker.world().pi_mem(union_->op(i), type_app) : type_app);
-    if (value_type) {
-        value_type->as_nominal<thorin::Pi>()->set_codomain(sigma);
-        return value_type;
-    }
-    return sigma;
+    return type;
 }
 
 const artic::Type* ModDecl::infer(TypeChecker& checker) const {
+    populate();
     for (auto& decl : decls)
         checker.infer(*decl);
-    return checker.world().sigma();
-}
 
-const artic::Type* ModDecl::value(TypeChecker& checker) const {
-    populate();
-    checker.infer(*this);
     auto mod = checker.world().type_mod(*this);
-    auto ctor = checker.world().pi_mem(checker.world().sigma(), mod);
+    value_type = checker.world().pi_mem(checker.world().sigma(), mod);
     for (size_t i = 0, n = members.size(); i < n; ++i)
         mod->set(i, members[i]->type);
-    return ctor;
+    return checker.world().sigma();
 }
 
 // Patterns ------------------------------------------------------------------------

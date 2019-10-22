@@ -58,7 +58,7 @@ const thorin::Pi* World::type_bb(const Type* arg) {
 const thorin::Def* World::debug_info(const Loc& loc, const std::string name, const thorin::Def* meta) {
     return debug({
         name,
-        *loc.file,
+        loc.file ? *loc.file : "",
         thorin::nat_t(loc.begin_row),
         thorin::nat_t(loc.begin_col),
         thorin::nat_t(loc.end_row),
@@ -102,7 +102,7 @@ namespace log {
 
 Output& operator << (Output& out, const Type& type) {
     if (auto pi = type.isa<thorin::Pi>()) {
-        bool parens = pi->domain(1)->isa<thorin::Sigma>();
+        bool parens = pi->domain(1)->isa_structural<thorin::Sigma>();
         out << log::keyword_style("fn") << " ";
         if (!parens) out << '(';
         out << *pi->domain(1);

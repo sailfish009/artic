@@ -843,9 +843,6 @@ struct NamedDecl : public Decl {
 
     mutable const artic::Type* value_type = nullptr;
 
-    /// Returns the type of the declaration value, if any.
-    virtual const artic::Type* value(TypeChecker&) const { return value_type; }
-
     NamedDecl(const Loc& loc, Identifier&& id)
         : Decl(loc), id(std::move(id))
     {}
@@ -999,7 +996,6 @@ struct EnumDecl : public NamedDecl {
     const thorin::Def* emit_head(Emitter&) const override;
     const thorin::Def* emit(Emitter&) const override;
     const artic::Type* infer(TypeChecker&) const override;
-    const artic::Type* value(TypeChecker&) const override;
     void bind_head(NameBinder&) const override;
     void bind(NameBinder&) const override;
     void print(Printer&) const override;
@@ -1024,7 +1020,6 @@ struct ModDecl : public NamedDecl {
     const thorin::Def* emit_head(Emitter&) const override;
     const thorin::Def* emit(Emitter&) const override;
     const artic::Type* infer(TypeChecker&) const override;
-    const artic::Type* value(TypeChecker&) const override;
     void bind_head(NameBinder&) const override;
     void bind(NameBinder&) const override;
     void print(Printer&) const override;
